@@ -8,6 +8,21 @@
 1. Remix local installing: ``` npm i -g @remix-project/remixd ```
 1. Remix server provider to open on browser: ``` remixd -s . ```
 1. --> go to remix.ethereum.org --> change workspace to localhost --> click connect
+1. REMIX WARNING: using JS VM we can do any interaction with the smart contract without paying, but once we connect MetaMask on "Web3 Provider"
+
+## Concepts
+
+1. Smart Contracts doens't interate out side the blockchain (http, soap...), so to get any outside value into the smart contract we need an [Oracle application](https://ethereum.stackexchange.com/questions/85178/what-is-a-blockchain-oracle/85181#85181)
+1. **Abstract Contracts vs Interface**:
+    1. Abstract Contracts =  Contracts are identified as abstract contracts when at least one of their functions lacks an implementation (defined a function, but implemented);
+    1. Interface = same as abtract contract, but limited to ABI representation.
+    1. What interface differ to abstract:
+        1. Interfaces cannot have any functions implemented
+        1. Interfaces cannot inherit other contracts or interfaces (contracts can however inherit interfaces just as they would inherit other contracts)
+        1. Interfaces cannot define a constructor
+        1. Interfaces cannot define variables
+        1. Interfaces cannot define structs
+        1. Interfaces cannot define enums
 
 ## Solidity Essentials
 
