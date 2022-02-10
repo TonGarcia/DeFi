@@ -4,6 +4,12 @@ import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.0.0/contr
 
 contract StableCollateral is ERC20 {
 
+    /**
+        Sample Token Data
+        name = "Mint Dollar"
+        symbol = "USDM"
+        add to deploy input: "Mint Dollar","USDM"
+    **/
     constructor(string memory name, string memory symbol) ERC20(name, symbol) {
         // Mint 100.000.000 tokens to msg.sender
         // Similar to how
@@ -13,5 +19,7 @@ contract StableCollateral is ERC20 {
         // 100000000 * 10**uint(decimals()) == 100.000.000 units and 100000000000000000000 min units
         _mint(msg.sender, 100000000 * 10**uint(decimals()));
     }
+
+    
 
 }
