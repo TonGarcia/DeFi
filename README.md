@@ -11,3 +11,8 @@ This repository contains the core smart contract code for Multi Collateral Stabl
 ## Solidity overview
 
 https://github.com/TonGarcia/DeFi/blob/master/README.sol.md
+
+
+## Dai Framework
+
+Dai (MakerDAO overall) uses DappTools as framework: https://github.com/dapphub/dapptools
