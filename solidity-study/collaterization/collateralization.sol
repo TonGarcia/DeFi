@@ -5,11 +5,11 @@ import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.0.0/contr
 contract StableCollateral is ERC20 {
 
     /**
-        Sample Token Data
-        name = "Mint Dollar"
-        symbol = "USDM"
-        add to deploy input: "Mint Dollar","USDM"
-    **/
+      *  Smart contract values example
+      *  passing to deploy: "Mint Dollar","USDM"
+      *  name = "Mint Dollar"
+      *  symbol = "USDM"
+     **/
     constructor(string memory name, string memory symbol) ERC20(name, symbol) {
         // Mint 100.000.000 tokens to msg.sender
         // Similar to how
