@@ -1,14 +1,34 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: none
 pragma solidity ^0.8.11;
 
 import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.0.0/contracts/token/ERC20/ERC20.sol";
-import "https://github.com/Uniswap/v2-core/blob/master/contracts/UniswapV2Pair.sol";
+import "https://github.com/Uniswap/uniswap-v2-periphery/blob/master/contracts/interfaces/IUniswapV2Router02.sol";
 
 contract MintDollar is ERC20 {
     uint8 private _decimal = 2;
     mapping(address => uint256) collateralEth;
 
-    // Constructor on deploy contract: "Mint Dollar","USDM",100000
+    // testnets uniswap smart contract
+    address uniswapMainnet = 0x9c83dCE8CA20E9aAF9D3efc003b2ea62aBC08351;
+    address uniswapRopsten = 0x9c83dCE8CA20E9aAF9D3efc003b2ea62aBC08351;
+    address uniswapRinkeby = 0xf5D915570BC477f9B8D6C0E980aA81757A3AaC36;
+    address uniswapKovan = 0xD3E51Ef092B2845f10401a0159B2B96e8B6c3D30;
+    address uniswapGorli = 0x6Ce570d02D73d4c384b46135E87f8C592A8c86dA;
+    address uniswapAddress = uniswapRinkeby;
+    
+    // sample uniswap router approach
+    address internal constant UNISWAP_ROUTER_ADDRESS = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
+    IUniswapV2Router02 public uniswapRouter;
+
+    // uniswap rinkeby tokens list: https://github.com/Uniswap/default-token-list/blob/main/src/tokens/rinkeby.json 
+    // DAI rinkeby: 0xc7AD46e0b8a400Bb3C915120d284AafbA8fc4735
+    // WETH rinkeby: 0xc778417E063141139Fce010982780140Aa0cD5Ab
+    address private daiAddress = 0xc7AD46e0b8a400Bb3C915120d284AafbA8fc4735;
+    // Wrapped ETH, or WETH, refers to an ERC-20 compatible version of ether.
+    // In order for ETH to be exchanged with other Ethereum-based tokens, it needs to be wrapped into WETH. Wrapping ETH does not affect its value, 1 ETH = 1 WETH.
+    address private wethAddress = 0xc778417E063141139Fce010982780140Aa0cD5Ab;
+
+    // Constructor on deploy contract: "Mint Dollar - UniswapV2","USDM",100000
     constructor(string memory name, string memory symbol, uint _initialSupply) ERC20(name, symbol) {
         // Mint 100 tokens to msg.sender = 100 * 10**uint(decimals())
         // Mint 100.000.000 tokens to msg.sender = 100000000 * 10**uint(decimals())
@@ -18,6 +38,9 @@ contract MintDollar is ERC20 {
         // 100 * 10**uint(decimals()) == 100 units and 100000000000000000000 min units
         // 100000000 * 10**uint(decimals()) == 100.000.000 units and 100000000000000000000 min units
         _mint(msg.sender, _initialSupply * 10**uint(decimals()));
+
+        // Instantiate the uniswap router
+        uniswapRouter = IUniswapV2Router02(UNISWAP_ROUTER_ADDRESS);
     }
 
     // Override the decimals to 2 decimals to look like stable coin
@@ -36,42 +59,40 @@ contract MintDollar is ERC20 {
         return collateralEth[account];
     }
 
-    // calculate price based on pair reserves
-   function getEthUSDPrice(uint amount) public view returns(uint) {
-       // mainnet
-        const factory = "0xc0a47dFe034B400B47bDaD5FecDa2621de6c4d95";
+    // #######################
+    // # UNISWAP INTEGRATION #
+    // #######################
 
-        // testnets
-        const ropsten = "0x9c83dCE8CA20E9aAF9D3efc003b2ea62aBC08351";
-        const rinkeby = "0xf5D915570BC477f9B8D6C0E980aA81757A3AaC36";
-        const kovan = "0xD3E51Ef092B2845f10401a0159B2B96e8B6c3D30";
-        const gorli = "0x6Ce570d02D73d4c384b46135E87f8C592A8c86dA";
+    /*
+    function getPriceBy(address[] addressPair) public view returns (uint[] memory) {
+        uint dollarUnitAmount = 100;
+        return uniswapRouter.getAmountsIn(dollarUnitAmount, addressPair);
+    }
+    */
 
-        address _factory = rinkeby;
-        address ethToken = 0xCAFE000000000000000000000000000000000000; // ether
-        address usdToken = 0x6b175474e89094c44da98b954eedeac495271d0f; // USDC, DAI or USDT??
+    function getETHDollarPrice() public view returns (uint[] memory) {
+        uint dollarUnitAmount = 100;
+        return uniswapRouter.getAmountsIn(dollarUnitAmount, getPathDAItoETH());
+    }
 
-        address pair = address(uint(keccak256(abi.encodePacked(
-            hex"ff",
-            factory,
-            keccak256(
-                        abi.encodePacked(token0, token1)),
-                        hex"96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f"
-                    )
-                )
-            )
-        );
+    function getEstimatedETHforDAI(uint daiAmount) public view returns (uint[] memory) {
+        return uniswapRouter.getAmountsIn(daiAmount, getPathForETHtoDAI());
+    }
 
+    function getPathForETHtoDAI() public view returns (address[] memory) {
+        address[] memory path = new address[](2);
+        path[0] = wethAddress; //uniswapRouter.WETH();
+        path[1] = daiAddress;
+        
+        return path;
+    }
 
-        //address pairAddress = 
-
-        IUniswapV2Pair pair = IUniswapV2Pair(pairAddress);
-        IERC20 token1 = IERC20(pair.token1);
-        (uint Res0, uint Res1,) = pair.getReserves();
-
-        // decimals
-        uint res0 = Res0*(10**token1.decimals());
-        return((amount*res0)/Res1); // return amount of token0 needed to buy token1
-   }
+    function getPathDAItoETH() public view returns (address[] memory) {
+        address[] memory path = new address[](2);
+        path[0] = daiAddress;
+        path[1] = wethAddress; //uniswapRouter.WETH();
+        
+        return path;
+    }
 
 }
