@@ -22,7 +22,7 @@ contract MintDollar is ERC20 {
 
     // uniswap rinkeby tokens list: https://github.com/Uniswap/default-token-list/blob/main/src/tokens/rinkeby.json 
     // DAI rinkeby: 0xc7AD46e0b8a400Bb3C915120d284AafbA8fc4735
-    // WETH rinkeby: 0xc778417E063141139Fce010982780140Aa0cD5Ab
+    // WETH rinkeby: 0xc778417E063141139Fce010982780140Aa0cD5Ab // ETH rinkeby and mainnet: 0x0000000000000000000000000000000000000000
     address private daiAddress = 0xc7AD46e0b8a400Bb3C915120d284AafbA8fc4735;
     // Wrapped ETH, or WETH, refers to an ERC-20 compatible version of ether.
     // In order for ETH to be exchanged with other Ethereum-based tokens, it needs to be wrapped into WETH. Wrapping ETH does not affect its value, 1 ETH = 1 WETH.
@@ -75,6 +75,11 @@ contract MintDollar is ERC20 {
         return uniswapRouter.getAmountsIn(dollarUnitAmount, getPathDAItoETH());
     }
 
+    function getDollarETHPrice() public view returns (uint[] memory) {
+        uint dollarUnitAmount = 100;
+        return uniswapRouter.getAmountsIn(dollarUnitAmount, getPathForETHtoDAI());
+    }
+
     function getEstimatedETHforDAI(uint daiAmount) public view returns (uint[] memory) {
         return uniswapRouter.getAmountsIn(daiAmount, getPathForETHtoDAI());
     }
@@ -94,5 +99,16 @@ contract MintDollar is ERC20 {
         
         return path;
     }
+
+    function getWETHUniswapAddress() public view returns (address) {
+        return uniswapRouter.WETH();
+    }
+
+    function getDAIUniswapAddress() public view returns (address) {
+        return uniswapRouter.WETH();
+    }
+
+    // important to receive ETH
+    receive() payable external {}
 
 }

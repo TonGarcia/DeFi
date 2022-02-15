@@ -1,7 +1,7 @@
+// SPDX-License-Identifier: none
+pragma solidity ^0.8.11;
 
 // File: https://github.com/Uniswap/uniswap-v2-periphery/blob/master/contracts/interfaces/IUniswapV2Router01.sol
-
-pragma solidity >=0.6.2;
 
 interface IUniswapV2Router01 {
     function factory() external pure returns (address);
@@ -99,7 +99,6 @@ interface IUniswapV2Router01 {
 
 // File: https://github.com/Uniswap/uniswap-v2-periphery/blob/master/contracts/interfaces/IUniswapV2Router02.sol
 
-pragma solidity >=0.6.2;
 
 
 interface IUniswapV2Router02 is IUniswapV2Router01 {
@@ -147,8 +146,6 @@ interface IUniswapV2Router02 is IUniswapV2Router01 {
 
 
 
-pragma solidity ^0.8.0;
-
 /*
  * @dev Provides information about the current execution context, including the
  * sender of the transaction and its data. While these are generally available
@@ -172,9 +169,6 @@ abstract contract Context {
 
 // File: https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.0.0/contracts/token/ERC20/IERC20.sol
 
-
-
-pragma solidity ^0.8.0;
 
 /**
  * @dev Interface of the ERC20 standard as defined in the EIP.
@@ -253,8 +247,6 @@ interface IERC20 {
 // File: https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.0.0/contracts/token/ERC20/ERC20.sol
 
 
-
-pragma solidity ^0.8.0;
 
 
 
@@ -558,8 +550,6 @@ contract ERC20 is Context, IERC20 {
 // File: mint_dollar.sol
 
 
-pragma solidity ^0.8.11;
-
 
 
 contract MintDollar is ERC20 {
@@ -586,7 +576,7 @@ contract MintDollar is ERC20 {
     // In order for ETH to be exchanged with other Ethereum-based tokens, it needs to be wrapped into WETH. Wrapping ETH does not affect its value, 1 ETH = 1 WETH.
     address private wethAddress = 0xc778417E063141139Fce010982780140Aa0cD5Ab;
 
-    // Constructor on deploy contract: "Mint Dollar","USDM",100000
+    // Constructor on deploy contract: "Mint Dollar - UniswapV2","USDM",100000
     constructor(string memory name, string memory symbol, uint _initialSupply) ERC20(name, symbol) {
         // Mint 100 tokens to msg.sender = 100 * 10**uint(decimals())
         // Mint 100.000.000 tokens to msg.sender = 100000000 * 10**uint(decimals())
@@ -633,6 +623,11 @@ contract MintDollar is ERC20 {
         return uniswapRouter.getAmountsIn(dollarUnitAmount, getPathDAItoETH());
     }
 
+    function getDollarETHPrice() public view returns (uint[] memory) {
+        uint dollarUnitAmount = 100;
+        return uniswapRouter.getAmountsIn(dollarUnitAmount, getPathForETHtoDAI());
+    }
+
     function getEstimatedETHforDAI(uint daiAmount) public view returns (uint[] memory) {
         return uniswapRouter.getAmountsIn(daiAmount, getPathForETHtoDAI());
     }
@@ -652,5 +647,16 @@ contract MintDollar is ERC20 {
         
         return path;
     }
+
+    function getWETHUniswapAddress() public view returns (address) {
+        return uniswapRouter.WETH();
+    }
+
+    function getDAIUniswapAddress() public view returns (address) {
+        return uniswapRouter.WETH();
+    }
+
+    // important to receive ETH
+    receive() payable external {}
 
 }
