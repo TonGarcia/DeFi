@@ -2,31 +2,37 @@
 pragma solidity ^0.8.11;
 
 import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.0.0/contracts/token/ERC20/ERC20.sol";
-import "https://github.com/Uniswap/uniswap-v2-periphery/blob/master/contracts/interfaces/IUniswapV2Router02.sol";
+import "https://github.com/smartcontractkit/chainlink/blob/develop/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 contract MintDollar is ERC20 {
     uint8 private _decimal = 2;
-    mapping(address => uint256) collateralEth;
-
-    // testnets uniswap smart contract
-    address uniswapMainnet = 0x9c83dCE8CA20E9aAF9D3efc003b2ea62aBC08351;
-    address uniswapRopsten = 0x9c83dCE8CA20E9aAF9D3efc003b2ea62aBC08351;
-    address uniswapRinkeby = 0xf5D915570BC477f9B8D6C0E980aA81757A3AaC36;
-    address uniswapKovan = 0xD3E51Ef092B2845f10401a0159B2B96e8B6c3D30;
-    address uniswapGorli = 0x6Ce570d02D73d4c384b46135E87f8C592A8c86dA;
-    address uniswapAddress = uniswapRinkeby;
+    mapping(address => Collateral[]) collateralEthDB;
     
-    // sample uniswap router approach
-    address internal constant UNISWAP_ROUTER_ADDRESS = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
-    IUniswapV2Router02 public uniswapRouter;
+    /** 
+      * Collateral Strcut
+      * collateredEthInWei = received ether on the transaction
+      * remainingEth = not yet payedback, if zero it user was liquidated
+      * receivedStablecoin = amount of stablecoin added to the user on the collateralization action
+      * ratio = margin. Used to calculate the receivedStable and how much stablecoin to get back the collateral: (ratio+100)/100 * ...
+    */
+    struct Collateral {
+        uint256 collateredEthInWei;
+        uint256 remainingEthInWei;
+        uint256 receivedStablecoin;
+        uint ratio;
+    }
 
-    // uniswap rinkeby tokens list: https://github.com/Uniswap/default-token-list/blob/main/src/tokens/rinkeby.json 
-    // DAI rinkeby: 0xc7AD46e0b8a400Bb3C915120d284AafbA8fc4735
-    // WETH rinkeby: 0xc778417E063141139Fce010982780140Aa0cD5Ab // ETH rinkeby and mainnet: 0x0000000000000000000000000000000000000000
-    address private daiAddress = 0xc7AD46e0b8a400Bb3C915120d284AafbA8fc4735;
-    // Wrapped ETH, or WETH, refers to an ERC-20 compatible version of ether.
-    // In order for ETH to be exchanged with other Ethereum-based tokens, it needs to be wrapped into WETH. Wrapping ETH does not affect its value, 1 ETH = 1 WETH.
-    address private wethAddress = 0xc778417E063141139Fce010982780140Aa0cD5Ab;
+    // ETH price oracle
+    AggregatorV3Interface internal priceFeed;
+    /**
+     * Network: Rinkeby
+     * Aggregator: ETH/USD
+     * Dec: 8
+     * Address: 0x8A753747A1Fa494EC906cE90E9f37563A8AF630e
+     * Addresses on the networks: https://docs.chain.link/docs/ethereum-addresses/
+     */
+     address rinkebyETHUSD = 0x8A753747A1Fa494EC906cE90E9f37563A8AF630e;
+     address chainlinkETHUSD = 0x8A753747A1Fa494EC906cE90E9f37563A8AF630e;
 
     // Constructor on deploy contract: "Mint Dollar - UniswapV2","USDM",100000
     constructor(string memory name, string memory symbol, uint _initialSupply) ERC20(name, symbol) {
@@ -39,8 +45,8 @@ contract MintDollar is ERC20 {
         // 100000000 * 10**uint(decimals()) == 100.000.000 units and 100000000000000000000 min units
         _mint(msg.sender, _initialSupply * 10**uint(decimals()));
 
-        // Instantiate the uniswap router
-        uniswapRouter = IUniswapV2Router02(UNISWAP_ROUTER_ADDRESS);
+        // Instantiate chainlink oracle client
+        priceFeed = AggregatorV3Interface(chainlinkETHUSD);
     }
 
     // Override the decimals to 2 decimals to look like stable coin
@@ -48,67 +54,90 @@ contract MintDollar is ERC20 {
         return _decimal;
     }
 
-    function mint() external payable {
-        collateralEth[msg.sender] += msg.value;
-        // TODO: integrate with uniswap to get real-time ether price
+    /**
+     * Receive the account
+     * Returns all user's collaterals
+    */ 
+    function getCollateralsEthOf(address account) public view virtual returns(Collateral[] memory) {
+        require(account == address(account),"Invalid address account");
+        return collateralEthDB[account];
+    }
+
+    /**
+     * Receives the ether
+     * Calculate the ratio
+     * Store the ether on the user address
+     * Mint stablecoin
+     * Send the minted stablecoin to the user address
+    */
+    function collaterallize() external payable {
+        uint256 collateredEthInWei = msg.value;
+        uint256 remainingEthInWei = collateredEthInWei;
+        
+        // calculate the received ETH in dollar amount
+        (
+            uint80 roundID, 
+            uint price,
+            uint startedAt,
+            uint timeStamp,
+            uint80 answeredInRound
+        ) = getETHUSD(collateredEthInWei);
+        
         // TODO: calculate the ratio
+        uint ratio;
+
+        // TODO calculate the minted stablecoin
+        uint256 receivedStablecoin;
+
+        collateralEthDB[msg.sender] += msg.value;
+        
+        
         // TODO: deposit stablecoin on the user wallet
     }
 
-    function getCollateralEthOf(address account) public view virtual returns(uint256) {
-        return collateralEth[account];
-    }
-
-    // #######################
-    // # UNISWAP INTEGRATION #
-    // #######################
-
-    /*
-    function getPriceBy(address[] addressPair) public view returns (uint[] memory) {
-        uint dollarUnitAmount = 100;
-        return uniswapRouter.getAmountsIn(dollarUnitAmount, addressPair);
-    }
+    /** 
+     * 
+     * 
     */
+    function repay() external payable {
 
-    function getETHDollarPrice() public view returns (uint[] memory) {
-        uint dollarUnitAmount = 100;
-        return uniswapRouter.getAmountsIn(dollarUnitAmount, getPathDAItoETH());
     }
 
-    function getDollarETHPrice() public view returns (uint[] memory) {
-        uint dollarUnitAmount = 100;
-        return uniswapRouter.getAmountsIn(dollarUnitAmount, getPathForETHtoDAI());
-    }
+    // #######################
+    // # ORACLE INTEGRATION  #
+    // #######################
 
-    function getEstimatedETHforDAI(uint daiAmount) public view returns (uint[] memory) {
-        return uniswapRouter.getAmountsIn(daiAmount, getPathForETHtoDAI());
-    }
+    /**
+     * Returns the latest price
+     * sample return manipulation: 307184535214 / 10**8 = US$ 3071.84
+     */
+    function getETHUSD(uint256 amount) public view returns (uint80 roundID, uint256 price, uint startedAt, uint timeStamp, uint80 answeredInRound) {
+        // 1 ETH means 10**18 WEI
+        uint eth1 = 10 ** 18;
 
-    function getPathForETHtoDAI() public view returns (address[] memory) {
-        address[] memory path = new address[](2);
-        path[0] = wethAddress; //uniswapRouter.WETH();
-        path[1] = daiAddress;
+        // helper to convert price
+        int partialPrice;
         
-        return path;
-    }
+        // if the amount is less or equals 1, so it considers 1 ETH, if it is greater than 1 it considers weis
+        if(amount <= 1) {
+            amount = eth1;
+        }
 
-    function getPathDAItoETH() public view returns (address[] memory) {
-        address[] memory path = new address[](2);
-        path[0] = daiAddress;
-        path[1] = wethAddress; //uniswapRouter.WETH();
-        
-        return path;
-    }
+        // retrieve the data from the oracle
+        (
+            roundID, 
+            partialPrice,
+            startedAt,
+            timeStamp,
+            answeredInRound
+        ) = priceFeed.latestRoundData();
 
-    function getWETHUniswapAddress() public view returns (address) {
-        return uniswapRouter.WETH();
+        // format the output
+        return (roundID, 
+               ((uint256(partialPrice) * amount) / eth1),
+               startedAt,
+               timeStamp,
+               answeredInRound);
     }
-
-    function getDAIUniswapAddress() public view returns (address) {
-        return uniswapRouter.WETH();
-    }
-
-    // important to receive ETH
-    receive() payable external {}
 
 }
