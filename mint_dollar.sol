@@ -6,8 +6,14 @@ import "https://github.com/smartcontractkit/chainlink/blob/develop/contracts/src
 
 contract MintDollar is ERC20 {
     uint8 private _decimal = 2;
+    uint private _minCollateralRatio = 170;
     mapping(address => Collateral[]) collateralEthDB;
     
+    modifier auth {
+        require(collateralEthDB[msg.sender].length > 0, "Wallet wihout caollaterals");
+        _;
+    }
+
     /** 
       * Collateral Strcut
       * collateredEthInWei = received ether on the transaction
@@ -20,6 +26,7 @@ contract MintDollar is ERC20 {
         uint256 remainingEthInWei;
         uint256 receivedStablecoin;
         uint ratio;
+        uint liquidationPrice;
     }
 
     // ETH price oracle
@@ -34,7 +41,7 @@ contract MintDollar is ERC20 {
      address rinkebyETHUSD = 0x8A753747A1Fa494EC906cE90E9f37563A8AF630e;
      address chainlinkETHUSD = 0x8A753747A1Fa494EC906cE90E9f37563A8AF630e;
 
-    // Constructor on deploy contract: "Mint Dollar - UniswapV2","USDM",100000
+    // Constructor on deploy contract: "Mint Dollar","USDM",100000
     constructor(string memory name, string memory symbol, uint _initialSupply) ERC20(name, symbol) {
         // Mint 100 tokens to msg.sender = 100 * 10**uint(decimals())
         // Mint 100.000.000 tokens to msg.sender = 100000000 * 10**uint(decimals())
@@ -69,30 +76,42 @@ contract MintDollar is ERC20 {
      * Store the ether on the user address
      * Mint stablecoin
      * Send the minted stablecoin to the user address
+     * params
+     * expectedStable = how much expected stable to receive back
     */
-    function collaterallize() external payable {
+    function collaterallize(uint256 expectedStable) external payable {
         uint256 collateredEthInWei = msg.value;
-        uint256 remainingEthInWei = collateredEthInWei;
-        
+        //uint256 remainingEthInWei = collateredEthInWei;
+
         // calculate the received ETH in dollar amount
         (
-            uint80 roundID, 
-            uint price,
-            uint startedAt,
-            uint timeStamp,
-            uint80 answeredInRound
+            , //uint80 roundID
+            int globalPrice,
+            , //uint unitsPrice
+            , //uint startedAt
+            , //uint timeStamp
+            // uint80 answeredInRound
         ) = getETHUSD(collateredEthInWei);
-        
-        // TODO: calculate the ratio
-        uint ratio;
+
+        //Provided Ratio = (Collateral Amount x Collateral Price) ÷ Generated Stable × 100
+        uint providedRatio = estimateLiquidationRatio(collateredEthInWei, globalPrice, expectedStable);
+        require(providedRatio >= _minCollateralRatio, "Provided collateral is less than the minimal expected ratio");
+        // calculate the liquidation
+
+        //Liquidation Price = (Generated Stable * Liquidation Ratio) / (Amount of Collateral) 
+        estimateLiquidationPrice(collateredEthInWei, ratio, expectedStable);
+
 
         // TODO calculate the minted stablecoin
-        uint256 receivedStablecoin;
+        //uint256 receivedStablecoin;
 
-        collateralEthDB[msg.sender] += msg.value;
-        
-        
+        //collateralEthDB[msg.sender] += msg.value;
+
+
         // TODO: deposit stablecoin on the user wallet
+
+        
+        
     }
 
     /** 
@@ -103,6 +122,26 @@ contract MintDollar is ERC20 {
 
     }
 
+    // ##########################
+    // #  CONVERTION FUNCTIONS  #
+    // ##########################
+
+    /*
+     * Liquidation Ratio = (Collateral Amount x Collateral Price) ÷ Generated Stable × 100
+    */
+    function estimateLiquidationRatio(uint256 collateredEthInWei, int globalPrice, uint256 expectedStable) public pure returns (uint providedRatio) {
+        uint ethFloatPrice = uint(globalPrice/ 10**8);
+        return (collateredEthInWei * ethFloatPrice) / (expectedStable * 10**12 * 100);
+    }
+
+    /*
+     * Liquidation Price = (Generated Stable * Liquidation Ratio) / (Amount of Collateral) 
+    */
+    function estimateLiquidationPrice(uint256 collateredEthInWei, uint ratio, uint256 expectedStable) public pure returns (uint liquidation) {
+        return ((expectedStable * 10**12) * ratio) / collateredEthInWei;
+    }
+
+
     // #######################
     // # ORACLE INTEGRATION  #
     // #######################
@@ -111,13 +150,10 @@ contract MintDollar is ERC20 {
      * Returns the latest price
      * sample return manipulation: 307184535214 / 10**8 = US$ 3071.84
      */
-    function getETHUSD(uint256 amount) public view returns (uint80 roundID, uint256 price, uint startedAt, uint timeStamp, uint80 answeredInRound) {
+    function getETHUSD(uint256 amount) public view returns (uint80 roundID, int256 globalPrice, uint256 unitsPrice, uint startedAt, uint timeStamp, uint80 answeredInRound) {
         // 1 ETH means 10**18 WEI
         uint eth1 = 10 ** 18;
 
-        // helper to convert price
-        int partialPrice;
-        
         // if the amount is less or equals 1, so it considers 1 ETH, if it is greater than 1 it considers weis
         if(amount <= 1) {
             amount = eth1;
@@ -126,15 +162,18 @@ contract MintDollar is ERC20 {
         // retrieve the data from the oracle
         (
             roundID, 
-            partialPrice,
+            globalPrice,
             startedAt,
             timeStamp,
             answeredInRound
         ) = priceFeed.latestRoundData();
 
+        uint256 floatPrice = uint256(globalPrice / 10**8);
+
         // format the output
         return (roundID, 
-               ((uint256(partialPrice) * amount) / eth1),
+                globalPrice,
+               ((floatPrice * amount) / eth1),
                startedAt,
                timeStamp,
                answeredInRound);
