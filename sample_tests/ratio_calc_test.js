@@ -6,4 +6,5 @@ nWeiETH = 1 * 10**18;
 ethPrice = 307184535214;
 ethFloatPrice = ethPrice / 10**8;
 //((nWeiETH * (ethPrice * 10**7)) / expectedStable) * 100;
-parseInt((nWeiETH * ethFloatPrice) / (expectedStable * 10**12 * 100));
+providedRatio = (nWeiETH * ethFloatPrice) / (expectedStable * 10**12 * 100);
+console.log(`providedRatio: ${parseInt(providedRatio)}`);

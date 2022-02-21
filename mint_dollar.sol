@@ -6,40 +6,49 @@ import "https://github.com/smartcontractkit/chainlink/blob/develop/contracts/src
 
 contract MintDollar is ERC20 {
     uint8 private _decimal = 2;
-    uint private _minCollateralRatio = 170;
-    mapping(address => Collateral[]) collateralEthDB;
-    
+    uint private _liquidationRatio = 170;
+    uint private _minMintableStablecoin = 1000; // US$ 10.00
+    mapping(address => Collateral[]) lockedCollateralsDB;
+
     modifier auth {
-        require(collateralEthDB[msg.sender].length > 0, "Wallet wihout caollaterals");
+        require(lockedCollateralsDB[msg.sender].length > 0, "Wallet wihout caollaterals");
         _;
     }
 
-    /** 
+    /**
       * Collateral Strcut
-      * collateredEthInWei = received ether on the transaction
-      * remainingEth = not yet payedback, if zero it user was liquidated
-      * receivedStablecoin = amount of stablecoin added to the user on the collateralization action
-      * ratio = margin. Used to calculate the receivedStable and how much stablecoin to get back the collateral: (ratio+100)/100 * ...
+      * lockedCollateral = received ether on the transaction (ETH in WEI units)
+      * remainingCollateral = not yet repaid, if zero it user was liquidated or got it back
+      * mintedStableCoin = amount of StableCoin added to the user on the collateralization action
+      * ratio = margin, stored to get back in time, because it liquidation ration can change along the time
     */
     struct Collateral {
-        uint256 collateredEthInWei;
-        uint256 remainingEthInWei;
-        uint256 receivedStablecoin;
-        uint ratio;
+        uint256 lockedCollateral;
+        uint256 remainingCollateral;
+        uint256 mintedStableCoin;
         uint liquidationPrice;
     }
 
     // ETH price oracle
     AggregatorV3Interface internal priceFeed;
+
+    /**
+     * Network: Mainnet
+     * Aggregator: ETH/USD
+     * Dec: 8
+     * Address: 0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419
+     * Addresses on the networks: https://docs.chain.link/docs/ethereum-addresses/
+    */
+    address _mainChainlinkETHUSD = 0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419;
+
     /**
      * Network: Rinkeby
      * Aggregator: ETH/USD
      * Dec: 8
      * Address: 0x8A753747A1Fa494EC906cE90E9f37563A8AF630e
      * Addresses on the networks: https://docs.chain.link/docs/ethereum-addresses/
-     */
-     address rinkebyETHUSD = 0x8A753747A1Fa494EC906cE90E9f37563A8AF630e;
-     address chainlinkETHUSD = 0x8A753747A1Fa494EC906cE90E9f37563A8AF630e;
+    */
+    address _rinkebyChainlinkETHUSD = 0x8A753747A1Fa494EC906cE90E9f37563A8AF630e;
 
     // Constructor on deploy contract: "Mint Dollar","USDM",100000
     constructor(string memory name, string memory symbol, uint _initialSupply) ERC20(name, symbol) {
@@ -51,6 +60,9 @@ contract MintDollar is ERC20 {
         // 100 * 10**uint(decimals()) == 100 units and 100000000000000000000 min units
         // 100000000 * 10**uint(decimals()) == 100.000.000 units and 100000000000000000000 min units
         _mint(msg.sender, _initialSupply * 10**uint(decimals()));
+
+        //address chainlinkETHUSD = _mainChainlinkETHUSD;
+        address chainlinkETHUSD = _rinkebyChainlinkETHUSD;
 
         // Instantiate chainlink oracle client
         priceFeed = AggregatorV3Interface(chainlinkETHUSD);
@@ -64,10 +76,10 @@ contract MintDollar is ERC20 {
     /**
      * Receive the account
      * Returns all user's collaterals
-    */ 
+    */
     function getCollateralsEthOf(address account) public view virtual returns(Collateral[] memory) {
         require(account == address(account),"Invalid address account");
-        return collateralEthDB[account];
+        return lockedCollateralsDB[account];
     }
 
     /**
@@ -77,11 +89,13 @@ contract MintDollar is ERC20 {
      * Mint stablecoin
      * Send the minted stablecoin to the user address
      * params
-     * expectedStable = how much expected stable to receive back
+     * vaultDebt = how much StableCoin to be minted
     */
-    function collaterallize(uint256 expectedStable) external payable {
-        uint256 collateredEthInWei = msg.value;
-        //uint256 remainingEthInWei = collateredEthInWei;
+    function collaterallize(uint256 vaultDebt) external payable {
+        // start the collateralization
+        uint256 eth1 = 10 ** 18;
+        uint256 lockedCollateral = msg.value;
+        uint256 remainingCollateral = lockedCollateral;
 
         // calculate the received ETH in dollar amount
         (
@@ -91,32 +105,40 @@ contract MintDollar is ERC20 {
             , //uint startedAt
             , //uint timeStamp
             // uint80 answeredInRound
-        ) = getETHUSD(collateredEthInWei);
+        ) = getETHUSD(lockedCollateral);
 
-        //Provided Ratio = (Collateral Amount x Collateral Price) ÷ Generated Stable × 100
-        uint providedRatio = estimateLiquidationRatio(collateredEthInWei, globalPrice, expectedStable);
-        require(providedRatio >= _minCollateralRatio, "Provided collateral is less than the minimal expected ratio");
-        // calculate the liquidation
+        // Check if the asked/bid value is the minimal mintable stablecoin
+        require(_minMintableStablecoin <= vaultDebt, "The min ask for vault debt is US$ 10.00");
 
-        //Liquidation Price = (Generated Stable * Liquidation Ratio) / (Amount of Collateral) 
-        estimateLiquidationPrice(collateredEthInWei, ratio, expectedStable);
+        // Calculate to check if the received value on the transaction match with the asked/bid
+        uint calcVaultDebt = (lockedCollateral * globalPrice) / eth1; // amount to be minted
+        require(_minMintableStablecoin <= calcVaultDebt, "The received ETH doesn't mint the minimal amount of US$ 10.00");
 
+        // Provided Ratio = (Collateral Amount x Collateral Price) ÷ Generated Stable × 100
+        uint providedRatio = calcProvidedRatio(lockedCollateral, globalPrice, expectedStable);
+        bool ratioOk = (providedRatio >= _minCollateralRatio);
+        require(ratioOk, "The amount asked vs. paid ETH diverges for the liquidation ratio: 170%");
 
-        // TODO calculate the minted stablecoin
-        //uint256 receivedStablecoin;
+        // Liquidation Price = (Generated Stable * Liquidation Ratio) / (Amount of Collateral)
+        uint liquidationPrice = estimateLiquidationPrice(vaultDebt, globalPrice);
 
-        //collateralEthDB[msg.sender] += msg.value;
+        // Mint the stablecoin
+        _mint(msg.sender, vaultDebt);
 
-
-        // TODO: deposit stablecoin on the user wallet
-
-        
-        
+        // Store the calculated data
+        lockedCollateralsDB[msg.sender].push(
+            Collateral(
+                lockedCollateral,
+                remainingCollateral,
+                vaultDebt, // mintedStableCoin
+                liquidationPrice
+            )
+        );
     }
 
-    /** 
-     * 
-     * 
+    /**
+     *
+     *
     */
     function repay() external payable {
 
@@ -129,18 +151,22 @@ contract MintDollar is ERC20 {
     /*
      * Liquidation Ratio = (Collateral Amount x Collateral Price) ÷ Generated Stable × 100
     */
-    function estimateLiquidationRatio(uint256 collateredEthInWei, int globalPrice, uint256 expectedStable) public pure returns (uint providedRatio) {
+    function calcProvidedRatio(uint256 collateredEthInWei, int globalPrice, uint256 expectedStable) 
+                                      public pure returns (uint providedRatio) {
         uint ethFloatPrice = uint(globalPrice/ 10**8);
         return (collateredEthInWei * ethFloatPrice) / (expectedStable * 10**12 * 100);
     }
 
     /*
-     * Liquidation Price = (Generated Stable * Liquidation Ratio) / (Amount of Collateral) 
+     * vaultDebt = amount to be minted
+     * currentPrice = price (1000 = US$ 10.00)
+     * Liquidation Price = (Generated Stable * Liquidation Ratio) / (Amount of Collateral)
     */
-    function estimateLiquidationPrice(uint256 collateredEthInWei, uint ratio, uint256 expectedStable) public pure returns (uint liquidation) {
-        return ((expectedStable * 10**12) * ratio) / collateredEthInWei;
+    function estimateLiquidationPrice(uint256 vaultDebt, uint16 currentPrice) 
+                                      public pure returns (uint liquidationPrice) {
+        uint256 liquidationRation = (vaultDebt*_liquidationRatio*(10**14))/currentPrice;
+        return (currentPrice*liquidationRation)/(10**16); // liquidationPrice
     }
-
 
     // #######################
     // # ORACLE INTEGRATION  #
@@ -150,7 +176,15 @@ contract MintDollar is ERC20 {
      * Returns the latest price
      * sample return manipulation: 307184535214 / 10**8 = US$ 3071.84
      */
-    function getETHUSD(uint256 amount) public view returns (uint80 roundID, int256 globalPrice, uint256 unitsPrice, uint startedAt, uint timeStamp, uint80 answeredInRound) {
+    function getETHUSD(uint256 amount) 
+                       public view returns (
+                           uint80 roundID, 
+                           int256 globalPrice, 
+                           uint256 unitsPrice, 
+                           uint startedAt, 
+                           uint timeStamp, 
+                           uint80 answeredInRound) {
+        
         // 1 ETH means 10**18 WEI
         uint eth1 = 10 ** 18;
 
@@ -161,7 +195,7 @@ contract MintDollar is ERC20 {
 
         // retrieve the data from the oracle
         (
-            roundID, 
+            roundID,
             globalPrice,
             startedAt,
             timeStamp,
@@ -171,7 +205,7 @@ contract MintDollar is ERC20 {
         uint256 floatPrice = uint256(globalPrice / 10**8);
 
         // format the output
-        return (roundID, 
+        return (roundID,
                 globalPrice,
                ((floatPrice * amount) / eth1),
                startedAt,
