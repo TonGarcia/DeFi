@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: none
-pragma solidity ^0.8.11;
+pragma solidity ^0.8.12;
 
 import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.0.0/contracts/token/ERC20/ERC20.sol";
 import "https://github.com/smartcontractkit/chainlink/blob/develop/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
@@ -106,21 +106,22 @@ contract MintDollar is ERC20 {
             , //uint timeStamp
             // uint80 answeredInRound
         ) = getETHUSD(lockedCollateral);
+        uint256 _globalPrice = uint256(globalPrice);
 
         // Check if the asked/bid value is the minimal mintable stablecoin
         require(_minMintableStablecoin <= vaultDebt, "The min ask for vault debt is US$ 10.00");
 
         // Calculate to check if the received value on the transaction match with the asked/bid
-        uint calcVaultDebt = (lockedCollateral * globalPrice) / eth1; // amount to be minted
+        uint calcVaultDebt = (lockedCollateral * _globalPrice) / eth1; // amount to be minted
         require(_minMintableStablecoin <= calcVaultDebt, "The received ETH doesn't mint the minimal amount of US$ 10.00");
 
         // Provided Ratio = (Collateral Amount x Collateral Price) ÷ Generated Stable × 100
-        uint providedRatio = calcProvidedRatio(lockedCollateral, globalPrice, expectedStable);
-        bool ratioOk = (providedRatio >= _minCollateralRatio);
+        uint providedRatio = calcProvidedRatio(lockedCollateral, globalPrice, vaultDebt);
+        bool ratioOk = (providedRatio >= _liquidationRatio); // _liquidationRatio = _minCollateralRatio
         require(ratioOk, "The amount asked vs. paid ETH diverges for the liquidation ratio: 170%");
 
         // Liquidation Price = (Generated Stable * Liquidation Ratio) / (Amount of Collateral)
-        uint liquidationPrice = estimateLiquidationPrice(vaultDebt, globalPrice);
+        uint liquidationPrice = estimateLiquidationPrice(vaultDebt, uint16(_globalPrice));
 
         // Mint the stablecoin
         _mint(msg.sender, vaultDebt);
@@ -163,9 +164,9 @@ contract MintDollar is ERC20 {
      * Liquidation Price = (Generated Stable * Liquidation Ratio) / (Amount of Collateral)
     */
     function estimateLiquidationPrice(uint256 vaultDebt, uint16 currentPrice) 
-                                      public pure returns (uint liquidationPrice) {
-        uint256 liquidationRation = (vaultDebt*_liquidationRatio*(10**14))/currentPrice;
-        return (currentPrice*liquidationRation)/(10**16); // liquidationPrice
+                                      public view returns (uint liquidationPrice) {
+        uint256 calcLiquidationRatio = (vaultDebt*_liquidationRatio*(10**14))/currentPrice;
+        return (currentPrice*calcLiquidationRatio)/(10**16); // liquidationPrice
     }
 
     // #######################
