@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: none
+// "Mint Dollar","USDM",100000
 // File: https://github.com/smartcontractkit/chainlink/blob/develop/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol
 
 
@@ -575,7 +576,7 @@ contract MintDollar is ERC20 {
         require(providedRatio >= _liquidationRatio, "The amount asked vs. paid ETH diverges for the liquidation ratio: 170%");
 
         // Liquidation Price = (Generated Stable * Liquidation Ratio) / (Amount of Collateral)
-        uint liquidationPrice = estimateLiquidationPrice(calcVaultDebt, uint16(_globalPrice));
+        uint liquidationPrice = estimateLiquidationPrice(calcVaultDebt, _globalPrice);
 
         // Mint the stablecoin
         _mint(msg.sender, vaultDebt);
@@ -650,7 +651,7 @@ contract MintDollar is ERC20 {
      * currentPrice = price (1000 = US$ 10.00)
      * Liquidation Price = (Generated Stable * Liquidation Ratio) / (Amount of Collateral)
     */
-    function estimateLiquidationPrice(uint256 vaultDebt, uint16 currentPrice) 
+    function estimateLiquidationPrice(uint256 vaultDebt, uint256 currentPrice) 
                                       public view returns (uint liquidationPrice) {
         uint256 calcLiquidationRatio = (vaultDebt*_liquidationRatio*(10**14))/currentPrice;
         return (currentPrice*calcLiquidationRatio)/(10**16); // liquidationPrice
