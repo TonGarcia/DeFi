@@ -453,6 +453,7 @@ contract ERC20 is Context, IERC20 {
 // File: mint_dollar.sol
 
 
+// "Mint Dollar","USDM",100000
 pragma solidity ^0.8.12;
 
 //import "hardhat/console.sol";
@@ -533,7 +534,7 @@ contract MintDollar is ERC20 {
      * Receive the account
      * Returns all user's collaterals
     */
-    function getCollateralsEthOf(address account) public view virtual auth returns(Collateral[] memory) {
+    function getCollateralsEthOf(address account) public view virtual returns(Collateral[] memory) {
         require(account == address(account),"Invalid address account");
         return lockedCollateralsDB[account];
     }
