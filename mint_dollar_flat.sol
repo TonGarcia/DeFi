@@ -463,6 +463,7 @@ pragma solidity ^0.8.12;
 contract MintDollar is ERC20 {
     uint8 private _decimal = 2;
     uint private _liquidationRatio = 170;
+    uint private _maxMintableRatio = 5882; // 58.82%
     uint private _minMintableStablecoin = 1000; // US$ 10.00
     mapping(address => Collateral[]) lockedCollateralsDB;
 
@@ -549,7 +550,7 @@ contract MintDollar is ERC20 {
     */
     function collaterallize(uint256 vaultDebt) external payable {
         // start the collateralization
-        uint256 eth1 = 10 ** 18;
+        //uint256 eth1 = 10 ** 18;
         uint256 lockedCollateral = msg.value;
         uint256 remainingCollateral = lockedCollateral;
 
@@ -568,7 +569,7 @@ contract MintDollar is ERC20 {
         require(_minMintableStablecoin <= vaultDebt, "The received ETH doesn't mint the minimal amount of US$ 10.00");
 
         // Calculate to check if the received ether fit the vaultDebt required
-        uint calcVaultDebt = (lockedCollateral * _globalPrice) / eth1; // amount to be minted
+        uint calcVaultDebt = estimateMaxMintableStable(lockedCollateral, _globalPrice); // amount to be minted
         require(_minMintableStablecoin <= calcVaultDebt, "The received ETH doesn't mint the minimal amount of US$ 10.00");
         require(calcVaultDebt >= vaultDebt, "The received ETH doesn't fit to collaterize the asked amount vaultDebt");
 
@@ -637,6 +638,17 @@ contract MintDollar is ERC20 {
     // ##########################
     // #  CONVERTION FUNCTIONS  #
     // ##########################
+
+    /** 
+     * Estimate the max mintable based on the provided ETH
+     * @param lockedCollateral is the amount weis locked
+     * @param globalPrice is the price on oracle format (10 ** 8)
+    **/
+    function estimateMaxMintableStable(uint256 lockedCollateral, uint256 globalPrice) 
+                                        public view returns (uint maxMintableStable) {
+        uint256 eth1 = 10 ** 18;
+        return (((globalPrice*lockedCollateral)/eth1)*(_maxMintableRatio/100)) / 10**8;
+    }
 
     /*
      * Liquidation Ratio = (Collateral Amount x Collateral Price) ÷ Generated Stable × 100
