@@ -111,6 +111,17 @@ contract MintDollar is ERC20 {
         ) = getETHUSD(lockedCollateral);
         uint256 _globalPrice = uint256(globalPrice);
 
+        // calculate the received ETH in dollar amount
+        (
+            , //uint80 roundID
+            int _collateralUSD,
+            , //uint unitsPrice
+            , //uint startedAt
+            , //uint timeStamp
+            // uint80 answeredInRound
+        ) = getETHUSD(lockedCollateral);
+        uint256 collateralUSD = uint256(_collateralUSD);
+
         // Check if the asked/bid value is greater than the minimal mintable stablecoin
         require(_minMintableStablecoin <= vaultDebt, "The received ETH doesn't mint the minimal amount of US$ 10.00");
 
@@ -124,7 +135,7 @@ contract MintDollar is ERC20 {
         require(providedRatio >= _liquidationRatio, "The amount asked vs. paid ETH diverges for the liquidation ratio: 170%");
 
         // Liquidation Price = (Generated Stable * Liquidation Ratio) / (Amount of Collateral)
-        uint liquidationPrice = estimateLiquidationPrice(calcVaultDebt, _globalPrice);
+        uint liquidationPrice = estimateLiquidationPrice(calcVaultDebt, _globalPrice, collateralUSD);
 
         // Mint the stablecoin
         _mint(msg.sender, vaultDebt);
@@ -238,12 +249,28 @@ contract MintDollar is ERC20 {
     /*
      * vaultDebt = amount to be minted
      * currentPrice = price (1000 = US$ 10.00)
-     * Liquidation Price = (Generated Stable * Liquidation Ratio) / (Amount of Collateral)
+     * Liquidation Price = ((Generated Stable * Liquidation Ratio) / (Amount of Collateral in dollar)) * Current Price
     */
-    function estimateLiquidationPrice(uint256 vaultDebt, uint256 currentPrice) 
+    function estimateLiquidationPrice(uint256 vaultDebt, uint256 currentPrice, uint256 collateralUSD) 
                                       public view returns (uint liquidationPrice) {
-        uint256 calcLiquidationRatio = (vaultDebt*_liquidationRatio*(10**14))/currentPrice;
-        return (currentPrice*calcLiquidationRatio)/(10**16); // liquidationPrice
+
+        uint256 eth1 = 10 ** 18;
+
+        if(currentPrice == 0) {
+            // calculate the received ETH in dollar amount
+            (
+                , //uint80 roundID
+                int _globalPrice,
+                , //uint unitsPrice
+                , //uint startedAt
+                , //uint timeStamp
+                // uint80 answeredInRound
+            ) = getETHUSD(eth1);
+
+            currentPrice = uint256(_globalPrice);
+        }
+
+        return (((vaultDebt*_liquidationRatio)/collateralUSD) * currentPrice) / 10 ** 8;
     }
 
     // #######################
