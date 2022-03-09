@@ -193,16 +193,46 @@ contract MintDollar is ERC20 {
     function estimateMaxMintableStable(uint256 lockedCollateral, uint256 globalPrice) 
                                         public view returns (uint maxMintableStable) {
         uint256 eth1 = 10 ** 18;
+
+        if(lockedCollateral == 0 || globalPrice == 0) {
+             // calculate the received ETH in dollar amount
+            (
+                , //uint80 roundID
+                int _globalPrice,
+                , //uint unitsPrice
+                , //uint startedAt
+                , //uint timeStamp
+                // uint80 answeredInRound
+            ) = getETHUSD(lockedCollateral);
+
+            globalPrice = uint256(_globalPrice);
+        }
+
         return (((globalPrice*lockedCollateral)/eth1)*(_maxMintableRatio/100)) / 10**8;
     }
 
     /*
      * Liquidation Ratio = (Collateral Amount x Collateral Price) ÷ Generated Stable × 100
     */
-    function calcProvidedRatio(uint256 collateredEthInWei, int globalPrice, uint256 expectedStable) 
-                                      public pure returns (uint providedRatio) {
-        uint ethFloatPrice = uint(globalPrice/ 10**8);
-        return (collateredEthInWei * ethFloatPrice) / (expectedStable * 10**12 * 100);
+    function calcProvidedRatio(uint256 lockedCollateral, int currentPrice, uint256 expectedStable) 
+                                      public view returns (uint providedRatio) {
+
+        if(currentPrice == 0) {
+            // calculate the received ETH in dollar amount
+            (
+                , //uint80 roundID
+                int _globalPrice,
+                , //uint unitsPrice
+                , //uint startedAt
+                , //uint timeStamp
+                // uint80 answeredInRound
+            ) = getETHUSD(lockedCollateral);
+
+            currentPrice = int(_globalPrice);
+        }
+
+        uint ethFloatPrice = uint(currentPrice/ 10**8);
+        return (lockedCollateral * ethFloatPrice) / (expectedStable * 10**12);
     }
 
     /*
