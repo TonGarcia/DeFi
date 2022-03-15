@@ -548,7 +548,7 @@ contract MintDollar is ERC20 {
      * Send the minted stablecoin to the user address
      * @param vaultDebt = how much StableCoin to be minted
     */
-    function collaterallize(uint256 vaultDebt) external payable {
+    function collateralize(uint256 vaultDebt) external payable {
         // start the collateralization
         //uint256 eth1 = 10 ** 18;
         uint256 lockedCollateral = msg.value;
