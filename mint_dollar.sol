@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: none
-// "Mint Dollar","USDM",100000
+// "Mint Dollar","USDM",1000000
 pragma solidity ^0.8.12;
 
 //import "hardhat/console.sol";
@@ -8,11 +8,16 @@ import "https://github.com/smartcontractkit/chainlink/blob/develop/contracts/src
 
 contract MintDollar is ERC20 {
     uint8 private _decimal = 2;
+    address private admin;
     uint private _liquidationRatio = 170;
     uint private _maxMintableRatio = 5882; // 58.82%
     uint private _minMintableStablecoin = 1000; // US$ 10.00
     mapping(address => Collateral[]) lockedCollateralsDB;
 
+    /**
+     * Modifier that authenticate the user, 
+     * prevent not yet user to access method that needs a record
+    **/
     modifier auth {
         require(lockedCollateralsDB[msg.sender].length > 0, "Wallet without any collaterals");
         _;
@@ -63,7 +68,8 @@ contract MintDollar is ERC20 {
         // 1 token = 1 * (10 ** decimals)
         // 100 * 10**uint(decimals()) == 100 units and 100000000000000000000 min units
         // 100000000 * 10**uint(decimals()) == 100.000.000 units and 100000000000000000000 min units
-        _mint(msg.sender, _initialSupply * 10**uint(decimals()));
+        admin = msg.sender;
+        _mint(admin, _initialSupply * 10**uint(decimals()));
 
         //address chainlinkETHUSD = _mainChainlinkETHUSD;
         address chainlinkETHUSD = _rinkebyChainlinkETHUSD;
@@ -94,22 +100,23 @@ contract MintDollar is ERC20 {
      * Send the minted stablecoin to the user address
      * @param vaultDebt = how much StableCoin to be minted
     */
+    /*
     function collateralize(uint256 vaultDebt) external payable {
         // start the collateralization
         //uint256 eth1 = 10 ** 18;
         uint256 lockedCollateral = msg.value;
         uint256 remainingCollateral = lockedCollateral;
 
-        // calculate the received ETH in dollar amount
+        // get the current price for 1 ETH
         (
             , //uint80 roundID
-            int globalPrice,
+            int _currentPrice,
             , //uint unitsPrice
             , //uint startedAt
             , //uint timeStamp
             // uint80 answeredInRound
-        ) = getETHUSD(lockedCollateral);
-        uint256 _globalPrice = uint256(globalPrice);
+        ) = getETHUSD(uint256(0));
+        uint256 currentPrice = uint256(_currentPrice);
 
         // calculate the received ETH in dollar amount
         (
@@ -126,18 +133,20 @@ contract MintDollar is ERC20 {
         require(_minMintableStablecoin <= vaultDebt, "The received ETH doesn't mint the minimal amount of US$ 10.00");
 
         // Calculate to check if the received ether fit the vaultDebt required
-        uint calcVaultDebt = estimateMaxMintableStable(lockedCollateral, _globalPrice); // amount to be minted
+        uint calcVaultDebt = estimateMaxMintableStable(lockedCollateral, currentPrice); // amount to be minted
         require(_minMintableStablecoin <= calcVaultDebt, "The received ETH doesn't mint the minimal amount of US$ 10.00");
         require(calcVaultDebt >= vaultDebt, "The received ETH doesn't fit to collaterize the asked amount vaultDebt");
 
         // Provided Ratio = (Collateral Amount x Collateral Price) ÷ Generated Stable × 100
-        uint providedRatio = calcProvidedRatio(lockedCollateral, globalPrice, vaultDebt);
+        uint providedRatio = calcProvidedRatio(lockedCollateral, int(currentPrice), vaultDebt);
         require(providedRatio >= _liquidationRatio, "The amount asked vs. paid ETH diverges for the liquidation ratio: 170%");
 
         // Liquidation Price = (Generated Stable * Liquidation Ratio) / (Amount of Collateral)
-        uint liquidationPrice = estimateLiquidationPrice(calcVaultDebt, _globalPrice, collateralUSD);
+        // uint256 vaultDebt, uint256 currentPrice, uint256 collateralUSD
+        uint liquidationPrice = estimateLiquidationPrice(calcVaultDebt, currentPrice, collateralUSD);
 
         // Mint the stablecoin
+        _mint(admin, vaultDebt);
         _mint(msg.sender, vaultDebt);
 
         // Store the calculated data
@@ -156,6 +165,7 @@ contract MintDollar is ERC20 {
      * @param idxCollateral is the index of the collateral on the DB for the msg.sender address 
      * @param amount is the amount in stablecoin to be refunded to unlock collateral
     */
+    /*
     function repay(uint idxCollateral, uint256 amount) external auth {
         // aux vars
         // uint256 eth1 = 1 * 10**18;
@@ -191,6 +201,7 @@ contract MintDollar is ERC20 {
         bool sent = payable(msg.sender).send(collateral.remainingCollateral);
         require(sent, "Failed to refund the account. The system was unable to send ether.");
     }
+    */
 
     // ##########################
     // #  CONVERTION FUNCTIONS  #
@@ -199,27 +210,26 @@ contract MintDollar is ERC20 {
     /** 
      * Estimate the max mintable based on the provided ETH
      * @param lockedCollateral is the amount weis locked
-     * @param globalPrice is the price on oracle format (10 ** 8)
+     * @param currentPrice is the price on oracle format (10 ** 8)
     **/
-    function estimateMaxMintableStable(uint256 lockedCollateral, uint256 globalPrice) 
+    function estimateMaxMintableStable(uint256 lockedCollateral, uint256 currentPrice) 
                                         public view returns (uint maxMintableStable) {
         uint256 eth1 = 10 ** 18;
 
-        if(lockedCollateral == 0 || globalPrice == 0) {
+        if(lockedCollateral == 0 || currentPrice == 0) {
              // calculate the received ETH in dollar amount
             (
                 , //uint80 roundID
-                int _globalPrice,
+                int _currentPrice,
                 , //uint unitsPrice
                 , //uint startedAt
                 , //uint timeStamp
                 // uint80 answeredInRound
             ) = getETHUSD(lockedCollateral);
-
-            globalPrice = uint256(_globalPrice);
+            currentPrice = uint256(_currentPrice);
         }
 
-        return (((globalPrice*lockedCollateral)/eth1)*(_maxMintableRatio/100)) / 10**8;
+        return (((currentPrice*lockedCollateral)/eth1)*(_maxMintableRatio/100)) / 10**8;
     }
 
     /*
